@@ -1,0 +1,289 @@
+---
+title: "Project Webscraping"
+author: "Andrew Skemp and Henry Fisher"
+date: "12/1/2022"
+output:
+  pdf_document:
+    fig_height: 3
+    fig_width: 4.5
+  html_document: default
+word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(stringr)
+library(httr)
+library(rvest)
+library(lubridate)
+library(mapview)
+library(haven)
+library(tidyverse)
+```
+
+```{r}
+churches_italy <- read_csv("~/Econ 378/churches_italy_2_2018oct2.csv")
+churches_europe <- read_csv("~/Econ 378/checkedchurches_eb_8_2018sep4.csv")
+printing_press <- read_dta("~/Econ 378/Printing_and_Protestants_Data-ReStat.dta")
+city_locations0 <- read_csv("~/Econ 378/worldcities.csv")
+```
+
+```{r}
+europe_year <- churches_europe %>%
+  select(1,2,4,8,14:29) %>%
+  rename(R1 = NA...14,
+         R2 = NA...15,
+         R3 = NA...16,
+         R4 = NA...17,
+         R5 = NA...18,
+         R6 = NA...19,
+         R7 = NA...20,
+         R8 = NA...21,
+         R9 = NA...22,
+         R10 = NA...23,
+         R11 = NA...24,
+         R12 = NA...25,
+         R13 = NA...26,
+         R14 = NA...27,
+         R15 = NA...28,
+         R16 = NA...29) %>%
+  filter(surface == "year") %>%
+  pivot_longer(c(5:20), names_to = "remodel", values_to = "year") %>%
+  filter(!is.na(year))
+
+europe_height <- churches_europe %>%
+  select(1,2,4,8,14:29) %>%
+  rename(R1 = NA...14,
+         R2 = NA...15,
+         R3 = NA...16,
+         R4 = NA...17,
+         R5 = NA...18,
+         R6 = NA...19,
+         R7 = NA...20,
+         R8 = NA...21,
+         R9 = NA...22,
+         R10 = NA...23,
+         R11 = NA...24,
+         R12 = NA...25,
+         R13 = NA...26,
+         R14 = NA...27,
+         R15 = NA...28,
+         R16 = NA...29) %>%
+  filter(surface == "height") %>%
+  pivot_longer(c(5:20), names_to = "remodel", values_to = "height") %>%
+  filter(!is.na(height))
+
+europe_location <- churches_europe %>%
+  select(1:3,7,12,13) %>%
+  filter(!is.na(ctr))
+
+tidy_europe_churches <- left_join(europe_year, europe_height, by = c("osmid", "remodel")) %>%
+  select(1,2,4:6,10) %>%
+  rename(city = city.x,
+         type = category.x) %>%
+  mutate(remodel = parse_number(str_remove(remodel, "R")),
+         height = parse_number(height),
+         year = parse_number(year)) %>%
+  left_join(europe_location, by = "osmid") %>%
+  select(1,2,8,9,10,11,3:6) %>%
+  rename(city = city.x) %>%
+  mutate(city = str_remove(city, " \\(.+\\)"))
+```
+
+### Italy Churches
+
+```{r}
+italy_year <- churches_italy %>%
+  select(1,2,4,7,11:23) %>%
+  rename(R1 = ...11,
+         R2 = ...12,
+         R3 = ...13,
+         R4 = ...14,
+         R5 = ...15,
+         R6 = ...16,
+         R7 = ...17,
+         R8 = ...18,
+         R9 = ...19,
+         R10 = ...20,
+         R11 = ...21,
+         R12 = ...22,
+         R13 = ...23) %>%
+  filter(surface == "year") %>%
+  pivot_longer(c(5:17), names_to = "remodel", values_to = "year") %>%
+  filter(!is.na(year))
+
+italy_height <- churches_italy %>%
+  select(1,2,4,7,11:23) %>%
+  rename(R1 = ...11,
+         R2 = ...12,
+         R3 = ...13,
+         R4 = ...14,
+         R5 = ...15,
+         R6 = ...16,
+         R7 = ...17,
+         R8 = ...18,
+         R9 = ...19,
+         R10 = ...20,
+         R11 = ...21,
+         R12 = ...22,
+         R13 = ...23) %>%
+  filter(surface == "height") %>%
+  pivot_longer(c(5:17), names_to = "remodel", values_to = "height") %>%
+  filter(!is.na(height))
+
+italy_location <- churches_italy %>%
+  select(1:3,7,9,10) %>%
+  filter(!is.na(lat)) %>%
+  mutate(ctr = "it") %>%
+  select(1:3,7,5,6)
+
+tidy_italy_churches <- left_join(italy_year, italy_height, by = c("osmid", "remodel")) %>%
+  select(1,2,4:6,10) %>%
+  rename(city = city.x,
+         type = category.x) %>%
+  mutate(remodel = parse_number(str_remove(remodel, "R")),
+         height = parse_number(height),
+         year = parse_number(year)) %>%
+  left_join(italy_location, by = "osmid") %>%
+  select(1,2,8,9,10,11,3:6) %>%
+  rename(city = city.x) %>%
+  mutate(city = str_remove(city, " \\(.+\\)"))
+  
+```
+
+### Printing Press Count by Region
+
+```{r}
+territory_press <- printing_press %>%
+  pivot_longer(c(prot1530,prot1560,prot1600),
+               names_to = "year", values_to = "conversion") %>%
+  filter(year == "prot1530") %>%
+  group_by(territory) %>%
+  summarise(press_by_territory = mean(press),
+            neighbor_conversion_rate = mean(conversion),
+            bishop_rate = mean(bishop))
+```
+
+### Joining Italy and Europe together
+
+```{r}
+tidy_all_churches <- rbind(tidy_europe_churches, tidy_italy_churches) %>%
+  mutate(ctr = str_replace(ctr, "be", "Belgium"),
+         ctr = str_replace(ctr, "it", "Italy"),
+         ctr = str_replace(ctr, "ch", "Switzerland"),
+         ctr = str_replace(ctr, "de", "Germany"),
+         ctr = str_replace(ctr, "fr", "France"),
+         ctr = str_replace(ctr, "nl", "Netherlands"),
+         ctr = str_replace(ctr, "uk", "Great Britain")) %>%
+  rename(country = ctr) %>%
+  mutate(conventual = ifelse(type == "conventual", 1, 0),
+         cathedral = ifelse(type == "cathedral", 1, 0)) %>%
+  filter(year <= 1517) %>%
+  group_by(osmid) %>%
+  filter(year == max(year)) %>%
+  ungroup() %>%
+  group_by(city, country) %>%
+    summarise(num_churches = n(),
+              height = max(height),
+              conventual = mean(conventual),
+              cathedral = mean(cathedral)) %>%
+  ungroup() %>%
+  mutate(conventual = ifelse(conventual > 0, 1, 0),
+         cathedral = ifelse(cathedral > 0, 1, 0))
+
+tidy_press <- printing_press %>%
+  rename(country = currcountry) %>%
+  mutate(country = str_replace(country, "S. Italy", "Italy"),
+         country = str_replace(country, "C. Italy", "Italy"),
+         country = str_replace(country, "N. Italy", "Italy"))
+```
+
+### Joining Cathedral and Press Data (and location data)
+
+###Error in auto_copy refers to the inner_join??
+
+```{r}
+all_churches_presses <- inner_join(tidy_all_churches, tidy_press, by = c("city", "country")) %>%
+  rename(lat1 = coordn,
+            lon1 = coorde) %>%
+  mutate(dist_to_Rome = 6371 * (2 * atan2(sqrt(sin((((41.9027835) * pi / 180) - (lat1 * pi / 180))/2)^2 + cos((lat1 * pi / 180)) * cos(((41.9027835) * pi / 180)) * sin((((12.4963655) * pi / 180) - (lon1 * pi / 180))/2)^2), sqrt(1 - (sin((((41.9027835) * pi / 180) - (lat1 * pi / 180))/2)^2 + cos((lat1 * pi / 180)) * cos(((41.9027835) * pi / 180)) * sin((((12.4963655) * pi / 180) - (lon1 * pi / 180))/2)^2))))) %>%
+  select(1:11,15:18,26,61) %>%
+  pivot_longer(c(prot1530,prot1560,prot1600), names_to = "year", values_to = "conversion") %>%
+  mutate(year = str_remove(year, "prot")) %>%
+  select(1,2,11,14,16,7,3:6,9,10,8,12:13,15) %>%
+  left_join(territory_press, by = "territory")
+```
+
+
+```{r}
+prot_city_strength <- all_churches_presses %>%
+  filter(year == "1600") %>%
+  group_by(city, territory) %>%
+  summarise(prot_city_strength = pop1500 * conversion) %>%
+  mutate(prot_city_strength = ifelse(is.na(prot_city_strength), 0, prot_city_strength)) %>%
+  print(n = 40)
+
+prot_territory_strength <- prot_city_strength %>%
+  group_by(territory) %>%
+  summarise(prot_territory_strength = sum(prot_city_strength))
+
+protestant_neightbor_strength <- left_join(prot_city_strength, prot_territory_strength) %>%
+  mutate(prot_neighbor_strength = prot_territory_strength - prot_city_strength) %>%
+  select(city, territory, prot_neighbor_strength)
+```
+
+### Econometrics
+
+```{r}
+test_tibble <- all_churches_presses %>%
+  filter(year == "1600") %>%
+  left_join(protestant_neightbor_strength)
+```
+
+```{r}
+model <- lm(conversion ~ prot_neighbor_strength + press + press_by_territory + bishop_rate + num_churches + cathedral + conventual + laymag + pop1500 + dist_to_Rome + marketpot1500 + water, data = test_tibble)
+
+summary(model)
+```
+
+```{r}
+logitmodel <- glm(conversion ~ prot_neighbor_strength + press + press_by_territory + bishop_rate + num_churches + cathedral + conventual + laymag + pop1500 + dist_to_Rome + marketpot1500 + water, data = test_tibble, family = binomial)
+
+summary(logitmodel)
+```
+
+```{r}
+tibble(favstats(test_tibble$prot_neighbor_strength))
+tibble(favstats(test_tibble$press))
+tibble(favstats(test_tibble$press_by_territory))
+tibble(favstats(test_tibble$bishop_rate))
+tibble(favstats(test_tibble$num_churches))
+tibble(favstats(test_tibble$cathedral))
+tibble(favstats(test_tibble$conventual))
+tibble(favstats(test_tibble$laymag))
+tibble(favstats(test_tibble$pop1500))
+tibble(favstats(test_tibble$dist_to_Rome))
+tibble(favstats(test_tibble$marketpot1500))
+tibble(favstats(test_tibble$water))
+```
+
+```{r}
+all_churches_presses %>%
+  filter(year == "1600") %>%
+  count(conversion)
+```
+
+```{r}
+tidy_all_churches %>%
+  summarise(n = sum(num_churches))
+```
+
+### Locations of the Church Data
+
+```{r}
+location_churches_europe <- tidy_europe_churches %>%
+  select(2,5,6)
+
+mapview(location_churches_europe, xcol = "lon", ycol = "lat", crs = 4269, grid = FALSE)
+```
