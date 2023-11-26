@@ -1,6 +1,6 @@
 ---
-title: "Project Webscraping"
-author: "Andrew Skemp and Henry Fisher"
+title: "Protestant Data"
+author: "Henry Fisher"
 date: "12/1/2022"
 output:
   pdf_document:
